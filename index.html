@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>성진 현장통역</title>
+<meta name="theme-color" content="#16221D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen field tool — header, ear-tag worker strip, conversation feed, docked talk buttons. Big targets for gloved hands. */
+:root{
+  --bg:#E7EBE4; --surface:#F7F8F4; --surface-2:#EEF1EA; --ink:#16221D; --muted:#5A675F; --line:#C9D0C5;
+  --tag:#F2C230; --tag-ink:#2B2200; --tag-edge:#C99A10;
+  --staff:#2C5B4E; --staff-ink:#F1F6F2; --staff-muted:#B9D0C6;
+  --ok:#2D7A4C; --warn:#A85A16; --rec:#C23B22; --focus:#1F6FD1; --scrim:rgba(10,16,13,.45);
+  --f-display:"Do Hyeon","IBM Plex Sans KR",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans KR","Noto Sans Devanagari",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --r:14px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#111714; --surface:#1A231F; --surface-2:#202B26; --ink:#E5ECE6; --muted:#93A198; --line:#2E3A34;
+  --staff:#2F6355; --staff-ink:#EEF5F0; --staff-muted:#A9C6BA;
+  --ok:#5DBB82; --warn:#E39A55; --rec:#F06A4F; --focus:#7DB2FF; --scrim:rgba(0,0,0,.6); color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+.app{height:100%;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding-block:14px 0;min-height:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.top{display:flex;align-items:center;gap:10px}
+.brand{font-family:var(--f-display);font-weight:400;font-size:26px;line-height:1;margin:0}
+.brand small{display:block;font-family:var(--f-body);font-size:11px;letter-spacing:.12em;color:var(--muted);margin-top:4px;text-transform:uppercase}
+.spacer{flex:1}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.status.live .dot{background:var(--ok)}
+.iconbtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center}
+.iconbtn svg{width:20px;height:20px}
+
+.workers{display:flex;gap:10px;overflow-x:auto;padding:10px 2px 4px;scrollbar-width:none}
+.workers::-webkit-scrollbar{display:none}
+.tag{position:relative;flex:0 0 auto;min-width:104px;border:2px solid var(--line);background:var(--surface);
+  border-radius:20px 20px 12px 12px;padding:16px 14px 9px;text-align:left;display:flex;flex-direction:column;gap:1px}
+.tag::before{content:"";position:absolute;top:6px;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:var(--bg);box-shadow:inset 0 0 0 2px var(--line)}
+.tag b{font-weight:600;font-size:15px}
+.tag span{font-size:12px;color:var(--muted)}
+.tag[aria-pressed="true"]{background:var(--tag);border-color:var(--tag-edge);color:var(--tag-ink)}
+.tag[aria-pressed="true"] span{color:var(--tag-ink);opacity:.75}
+.tag[aria-pressed="true"]::before{box-shadow:inset 0 0 0 2px var(--tag-edge)}
+.tag.add{border-style:dashed;justify-content:center;align-items:center;color:var(--muted);min-width:76px}
+.tag.add::before{display:none}
+.tag.first{border-style:dashed;border-color:var(--staff);color:var(--staff);min-width:118px}
+.tag.first::before{display:none}
+.tag.first b{display:flex;align-items:center;gap:6px}
+.greet{border:2px dashed var(--staff);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.greet .g-title{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.greet ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+.greet li{font-size:15px;line-height:1.35;overflow-wrap:anywhere}
+.greet li:lang(ne){font-family:"Noto Sans Devanagari",var(--f-body)}
+.greet li:lang(km),.greet li:lang(my),.greet li:lang(th){font-family:system-ui,sans-serif}
+@media (max-width:360px){.greet ul{grid-template-columns:1fr}}
+.label{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;padding:8px 0 10px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+
+.panel{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:4px 2px 12px}
+.msg{max-width:88%;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.msg.owner{align-self:flex-end;background:var(--surface);border:1px solid var(--line);border-bottom-right-radius:4px}
+.msg.staff{align-self:flex-start;background:var(--staff);color:var(--staff-ink);border-bottom-left-radius:4px}
+.who{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.staff .who{color:var(--staff-muted)}
+.orig{font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.staff .orig{color:var(--staff-muted)}
+.tr{font-size:21px;line-height:1.45;font-weight:500;overflow-wrap:anywhere}
+.tr:lang(ne),.orig:lang(ne),td:lang(ne){font-family:"Noto Sans Devanagari",var(--f-body)}
+.back{font-size:13px;border-top:1px dashed var(--line);padding-top:8px;color:var(--muted);overflow-wrap:anywhere}
+.back b{font-weight:600}
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.staff .chip{border-color:var(--staff-muted);color:var(--staff-muted)}
+.chip.warn{border-color:var(--warn);color:var(--warn)}
+.speak{margin-left:auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:none;border-radius:999px;padding:5px 11px;font-size:12px}
+.staff .speak{border-color:var(--staff-muted)}
+.speak[disabled]{opacity:.45}
+.speak svg{width:14px;height:14px}
+.pending .tr{color:var(--muted);font-size:15px}
+.err{font-size:13px;color:var(--warn)}
+.note{align-self:center;font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.empty{text-align:center;color:var(--muted);font-size:13px;margin-top:24px}
+
+.gloss{display:flex;flex-direction:column;gap:10px}
+.gintro{font-size:13px;color:var(--muted);margin:0;max-width:60ch}
+.gtable{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:480px;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+.st{border:1px solid var(--line);background:none;border-radius:999px;padding:2px 9px;font-size:12px;white-space:nowrap}
+.st.done{border-color:var(--ok);color:var(--ok)}
+.st.wait{border-color:var(--warn);color:var(--warn)}
+.del{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;padding:0 4px}
+.gadd{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:8px}
+input,select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px;min-width:0}
+@media (max-width:480px){.gadd{grid-template-columns:1fr 1fr}.gadd button{grid-column:span 2}}
+
+.dock{border-top:1px solid var(--line);padding-block:10px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.quick{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.quick::-webkit-scrollbar{display:none}
+.quick button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px}
+/* live conversation */
+.livebtn{width:100%;min-height:84px;border-radius:20px;border:2px solid var(--tag-edge);background:var(--tag);color:var(--tag-ink);display:flex;align-items:center;gap:14px;padding:12px 18px;text-align:left}
+.livebtn svg{width:30px;height:30px;flex:0 0 auto}
+.livebtn b{display:block;font-size:18px;font-weight:600;line-height:1.25}
+.livebtn span{display:block;font-size:13px;opacity:.8}
+.livebtn.on{background:var(--staff);border-color:var(--staff);color:var(--staff-ink)}
+.livebtn.wait{opacity:.75}
+.meter{margin-left:auto;display:flex;gap:3px;align-items:flex-end;height:26px}
+.meter i{width:5px;border-radius:3px;background:currentColor;height:4px;opacity:.85;transition:height .08s linear}
+.cap{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:start;font-size:14px;border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--surface)}
+.cap .who2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.cap .who2.owner{background:var(--tag);border-color:var(--tag-edge);color:var(--tag-ink)}
+.cap .who2.staff{background:var(--staff);border-color:var(--staff);color:var(--staff-ink)}
+.cap .txt{min-width:0;overflow-wrap:anywhere}
+.cap .txt small{display:block;color:var(--muted);font-size:12px}
+.live-note{font-size:12px;color:var(--muted);margin:0}
+.modes{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mode{display:inline-flex;align-items:center;gap:8px;border:2px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px 7px 8px;font-size:14px;font-weight:600;min-height:40px}
+.mode .knob{width:34px;height:20px;border-radius:999px;background:var(--line);position:relative;flex:0 0 auto}
+.mode .knob::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:left .15s}
+.mode[aria-pressed="true"]{border-color:var(--staff);color:var(--staff)}
+.mode[aria-pressed="true"] .knob{background:var(--staff)}
+.mode[aria-pressed="true"] .knob::after{left:16px}
+.mode-hint{font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.livebtn.on svg{animation:pulse 1.4s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.12)}}
+ .msg{animation:in .22s ease-out}@keyframes in{from{transform:translateY(6px);opacity:.4}to{transform:none;opacity:1}}}
+.compose{display:flex;gap:8px;align-items:flex-end}
+.compose textarea{flex:1;min-width:0;resize:none;border:2px solid var(--line);background:var(--surface);border-radius:var(--r);padding:11px 12px;min-height:50px;max-height:120px;font-size:16px}
+.compose textarea:focus{border-color:var(--ink);outline:none}
+.send{flex:0 0 auto;width:54px;height:50px;border-radius:var(--r);border:2px solid var(--ink);background:var(--ink);color:var(--bg);display:grid;place-items:center}
+.send svg{width:22px;height:22px}
+.live-text{font-size:13px;color:var(--rec);min-height:0}
+.banner{font-size:13px;border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:8px 12px;background:none;text-align:left}
+
+.sheet-wrap{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{width:100%;max-width:640px;background:var(--surface);border-radius:22px 22px 0 0;display:flex;flex-direction:column;gap:14px;max-height:90%;overflow-y:auto;
+  padding-block:20px calc(20px + env(safe-area-inset-bottom,0px));padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+.sheet h2{font-family:var(--f-display);font-weight:400;font-size:24px;margin:0}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:14px}
+.field p{margin:0;font-size:12px;color:var(--muted)}
+.seg{display:flex;border:1px solid var(--line);border-radius:12px;padding:3px;background:var(--surface-2)}
+.seg button{flex:1;border:0;background:none;padding:9px;border-radius:9px;color:var(--muted);font-size:14px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 16px;font-weight:600}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.switch input{width:22px;height:22px;flex:0 0 auto}
+.test{font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="brand">성진 현장통역<small>Seongjin farm interpreter</small></h1>
+    <div class="spacer"></div>
+    <span class="status" id="status"><span class="dot"></span><span id="status-text">설정 필요</span></span>
+    <button class="iconbtn" id="open-settings" aria-label="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <div>
+    <span class="label">대화 상대 · 귀표를 누르세요</span>
+    <div class="workers" id="workers"></div>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-chat" aria-selected="true">대화</button>
+    <button role="tab" id="tab-gloss" aria-selected="false">축산 용어집</button>
+  </nav>
+
+  <section class="panel" id="feed" aria-live="polite"></section>
+  <section class="panel gloss" id="gloss" hidden>
+    <p class="gintro">번역할 때 이 용어를 반드시 그대로 씁니다. 직원에게 확인받은 뒤 상태를 눌러 ‘검수완료’로 바꾸세요.</p>
+    <div class="gtable"><table><thead><tr><th>한국어</th><th>네팔어</th><th>우즈베크어</th><th>러시아어</th><th>상태</th><th></th></tr></thead><tbody id="gbody"></tbody></table></div>
+    <form class="gadd" id="gadd">
+      <input id="g-ko" placeholder="한국어 용어" required>
+      <input id="g-ne" placeholder="네팔어">
+      <input id="g-uz" placeholder="우즈베크어">
+      <input id="g-ru" placeholder="러시아어">
+      <button class="btn primary" type="submit">추가</button>
+    </form>
+  </section>
+
+  <footer class="dock" id="dock">
+    <button class="banner" id="banner" hidden>대화하려면 설정에서 Gemini 키를 넣어 주세요. 여기를 누르면 설정이 열립니다.</button>
+    <div class="quick" id="quick"></div>
+    <div class="greet" id="greet" hidden>
+      <span class="g-title">상대에게 이 화면을 보여 주세요 · 자기 나라 말로 말하면 언어를 알아냅니다</span>
+      <ul>
+        <li lang="uz">Iltimos, o‘z tilingizda gapiring.</li>
+        <li lang="ru">Пожалуйста, говорите на своём языке.</li>
+        <li lang="ne">कृपया आफ्नो भाषामा बोल्नुहोस्।</li>
+        <li lang="vi">Vui lòng nói bằng ngôn ngữ của bạn.</li>
+        <li lang="km">សូមនិយាយជាភាសារបស់អ្នក។</li>
+        <li lang="my">ကျေးဇူးပြု၍ သင့်ဘာသာစကားဖြင့် ပြောပါ။</li>
+        <li lang="th">กรุณาพูดเป็นภาษาของคุณ</li>
+        <li lang="en">Please speak in your own language.</li>
+      </ul>
+    </div>
+    <div class="cap" id="cap" hidden aria-live="polite"><span class="who2" id="cap-who">듣는 중</span><span class="txt" id="cap-txt">말씀하세요</span></div>
+    <div class="modes"><button class="mode" id="acc-btn" aria-pressed="false"><span class="knob" aria-hidden="true"></span>정확 모드</button><span class="mode-hint" id="acc-hint">작업 지시에 축산 용어집 적용 · 2~4초 느림</span></div>
+    <button class="livebtn" id="live-btn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><div><b id="live-label">실시간 대화 시작</b><span id="live-sub"></span></div><div class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></button>
+    <p class="live-note" id="live-text" hidden></p>
+    <div class="compose">
+      <textarea id="input" rows="1" placeholder="글로 입력 · 언어 자동 판별" aria-label="통역할 말"></textarea>
+      <button class="send" id="send" aria-label="통역하기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </footer>
+</div>
+
+<!-- worker add sheet -->
+<div class="sheet-wrap" id="wsheet" hidden>
+  <form class="sheet" id="wform">
+    <h2>직원 추가</h2>
+    <div class="field"><label for="w-name">이름</label><input id="w-name" required placeholder="예: 라주"></div>
+    <div class="field"><label for="w-lang">사용 언어</label><select id="w-lang"></select></div>
+    <div class="row"><button class="btn primary" type="submit">추가</button><button class="btn" type="button" id="w-cancel">취소</button><span class="spacer"></span><button class="btn" type="button" id="w-del" hidden>이 직원 삭제</button></div>
+  </form>
+</div>
+
+<!-- settings sheet -->
+<div class="sheet-wrap" id="ssheet" hidden>
+  <form class="sheet" id="sform">
+    <h2>설정</h2>
+    <div class="field">
+      <label for="s-gkey">Gemini API 키 · 실시간 음성 대화</label>
+      <input id="s-gkey" type="password" autocomplete="off" placeholder="AIza…">
+      <p>aistudio.google.com/apikey 에서 발급합니다. 말하면 곧바로 상대 언어 음성으로 통역합니다(Gemini 3.5 Live Translate). 키는 이 휴대폰에만 저장됩니다.</p>
+    </div>
+    <div class="field">
+      <label for="s-key">OpenRouter API 키 · 글 입력·역번역 확인</label>
+      <input id="s-key" type="password" autocomplete="off" placeholder="sk-or-v1-…">
+      <p>글로 입력한 문장 통역과, 대표님 말이 제대로 통역됐는지 한국어로 되짚어 보여주는 데 씁니다. 없어도 음성 대화는 됩니다.</p>
+    </div>
+    <div class="field">
+      <label for="s-model">글 통역 모델</label>
+      <select id="s-model"><option value="auto">자동 · 지금 쓸 수 있는 무료 모델 중 추천순</option></select>
+      <p id="s-model-note">무료 모델 목록을 불러오는 중…</p>
+    </div>
+    <div class="field">
+      <label>오늘 사용량</label>
+      <p id="s-usage"></p>
+    </div>
+    <label class="switch"><span><b>번역 결과 자동으로 읽어주기</b><br><small style="color:var(--muted)">휴대폰에 해당 언어 음성이 있을 때만 작동</small></span><input type="checkbox" id="s-auto"></label>
+    <div class="row"><button class="btn" type="button" id="s-test">연결 테스트</button><span class="test" id="s-test-out"></span></div>
+    <div class="row"><button class="btn primary" type="submit">저장</button><button class="btn" type="button" id="s-cancel">닫기</button></div>
+    <p style="font-size:12px;color:var(--muted);margin:0">대화 기록과 용어집은 이 휴대폰에만 저장됩니다. Gemini 무료 등급과 OpenRouter 무료 모델은 제공사가 대화 내용을 학습에 쓸 수 있으니 개인정보(주민번호·계좌 등)는 말하지 마세요. Google 결제를 연결하면 학습에 쓰이지 않습니다.</p>
+    <button class="btn" type="button" id="s-clear">현재 직원 대화 기록 지우기</button>
+  </form>
+</div>
+
+<script>
+(() => {
+"use strict";
+const LANGS = {
+  ko:{name:"한국어",native:"한국어",en:"Korean",stt:"ko-KR",tts:"ko"},
+  ne:{name:"네팔어",native:"नेपाली",en:"Nepali (Devanagari script)",stt:"ne-NP",tts:"ne"},
+  uz:{name:"우즈베크어",native:"Oʻzbekcha",en:"Uzbek (Latin script)",stt:"uz-UZ",tts:"uz"},
+  ru:{name:"러시아어",native:"Русский",en:"Russian",stt:"ru-RU",tts:"ru"},
+  vi:{name:"베트남어",native:"Tiếng Việt",en:"Vietnamese",stt:"vi-VN",tts:"vi"},
+  km:{name:"캄보디아어",native:"ខ្មែរ",en:"Khmer",stt:"km-KH",tts:"km"},
+  my:{name:"미얀마어",native:"မြန်မာ",en:"Burmese",stt:"my-MM",tts:"my"},
+  th:{name:"태국어",native:"ไทย",en:"Thai",stt:"th-TH",tts:"th"},
+  en:{name:"영어",native:"English",en:"English",stt:"en-US",tts:"en"}
+};
+const STAFF_LANGS = Object.keys(LANGS).filter(k=>k!=="ko");
+LANGS.auto={name:"언어 감지 중",native:"자동 감지",en:"",stt:"",tts:""};
+/* 감지된 언어가 목록에 없으면 이름을 만들어 추가한다 (예: kk → 카자흐어) */
+function normLang(code){return String(code||"").toLowerCase().split(/[-_]/)[0]}
+function ensureLang(code){
+  code=normLang(code); if(!code||LANGS[code]) return code;
+  let ko=code,nat=code,en=code;
+  try{ko=new Intl.DisplayNames(["ko"],{type:"language"}).of(code)||code}catch{}
+  try{nat=new Intl.DisplayNames([code],{type:"language"}).of(code)||code}catch{}
+  try{en=new Intl.DisplayNames(["en"],{type:"language"}).of(code)||code}catch{}
+  LANGS[code]={name:ko,native:nat,en,stt:code,tts:code}; return code;
+}
+/* OpenRouter: 무료 모델은 자주 바뀌므로 실행 때 목록을 받아 이 순서대로 고른다 */
+const OR_URL = "https://openrouter.ai/api/v1";
+const FREE_PREF = [/^google\/gemma-4-31b/, /^google\/gemma-4-26b/, /^google\/gemma/, /^nvidia\/nemotron-3-ultra/, /^nvidia\/nemotron-3(\.5)?-super/, /^meta-llama\/llama-[34]/, /^qwen\//, /^deepseek\//];
+const PAID_PREF = [/^google\/gemini-[\d.]+-flash(?!.*(image|tts|audio))/, /^openai\/gpt-[\w.-]*mini(?!.*(audio|search))/, /^anthropic\/claude-haiku/];
+const FALLBACK_FREE = ["google/gemma-4-31b-it:free","google/gemma-4-26b-a4b-it:free","openrouter/free"];
+let freeModels = [], paidModels = [];
+const SAMPLE_WORKERS = [{id:"w1",name:"라주",lang:"ne",example:true},{id:"w2",name:"자수르",lang:"uz",example:true},{id:"w3",name:"알렉세이",lang:"ru",example:true}];
+const SAMPLE_GLOSS = [
+  {ko:"분만틀",ne:"फ्यारोइङ क्रेट",uz:"tug‘ish kletkasi",ru:"станок для опороса",ok:false},
+  {ko:"모돈",ne:"माउ सुँगुर",uz:"ona cho‘chqa",ru:"свиноматка",ok:false},
+  {ko:"자돈",ne:"सुँगुरको बच्चा",uz:"cho‘chqa bolasi",ru:"поросёнок",ok:false},
+  {ko:"이유",ne:"दूध छुटाउने",uz:"sutdan ajratish",ru:"отъём",ok:false},
+  {ko:"보온등",ne:"तताउने बत्ती",uz:"isitish chirog‘i",ru:"обогревательная лампа",ok:false},
+  {ko:"사료",ne:"दाना",uz:"yem",ru:"корм",ok:false},
+  {ko:"백신",ne:"खोप",uz:"vaksina",ru:"вакцина",ok:false},
+  {ko:"분만",ne:"ब्याउनु",uz:"tug‘ish",ru:"опорос",ok:false}
+];
+const SAMPLE_FEED = {w1:[
+  {from:"owner",orig:"3번 분만틀 모돈 분만 시작했어. 30분마다 확인해.",tr:"३ नम्बर फ्यारोइङ क्रेटको माउ सुँगुरले ब्याउन सुरु गरेको छ। हरेक ३० मिनेटमा जाँच गर्नुहोस्।",back:"3번 분만틀의 모돈이 분만을 시작했습니다. 30분마다 확인하세요.",terms:["분만틀","모돈","분만"],lang:"ne",example:true},
+  {from:"staff",orig:"दुईवटा सुँगुरका बच्चा कमजोर छन्, दूध चुस्न सकेनन्।",tr:"새끼 두 마리가 약해서 젖을 못 빨았습니다.",back:"",terms:["자돈"],lang:"ne",example:true}
+]};
+const QUICK = ["분만실 온도 확인해","보온등 켜","이유 자돈 사료 급여해","백신 몇 마리 남았어?","오늘 작업 끝나면 말해줘","다친 데 없어? 괜찮아?"];
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k,d){try{const v=localStorage.getItem("sjint:"+k);return v?JSON.parse(v):d}catch{return d}},
+  set(k,v){try{localStorage.setItem("sjint:"+k,JSON.stringify(v))}catch{}}
+};
+let workers = store.get("workers", SAMPLE_WORKERS);
+workers.forEach(w=>{ if(w.lang!=="auto") ensureLang(w.lang) });
+workers = workers.filter(w=>!(w.guest && w.lang==="auto"));
+let gloss = store.get("gloss", SAMPLE_GLOSS);
+let feeds = store.get("feeds", SAMPLE_FEED);
+let current = store.get("current", workers[0]?.id);
+let settings = Object.assign({key:"",gkey:"",model:"auto",auto:true,accurate:false}, store.get("settings",{}));
+if(settings.key && !settings.key.startsWith("sk-or-")) settings.key=""; // 예전 Claude 키 정리
+freeModels = store.get("freeModels", []); paidModels = store.get("paidModels", []);
+let busy = false;
+
+/* ---------- workers ---------- */
+const cw = () => workers.find(w=>w.id===current) || workers[0];
+function renderWorkers(){
+  const box=$("workers"); box.textContent="";
+  const first=document.createElement("button"); first.className="tag first"; first.setAttribute("aria-label","처음 보는 사람과 대화 시작, 언어 자동 감지");
+  const fb=document.createElement("b"); fb.textContent="처음 보는 사람"; const fs=document.createElement("span"); fs.textContent="언어 자동 감지";
+  first.append(fb,fs); first.onclick=()=>{ if(live.on) stopLive(); startLive(true) }; box.append(first);
+  for(const w of workers){
+    const b=document.createElement("button"); b.className="tag"; b.setAttribute("aria-pressed",String(w.id===current));
+    const n=document.createElement("b"); n.textContent=w.name;
+    const s=document.createElement("span"); s.textContent=LANGS[w.lang].name+(w.example?" · 예시":"");
+    b.append(n,s);
+    b.onclick=()=>{ if(w.id===current){openWorker(w)} else {if(live.on)stopLive();current=w.id;store.set("current",current);renderAll()} };
+    box.append(b);
+  }
+  const add=document.createElement("button"); add.className="tag add"; add.textContent="+ 직원"; add.onclick=()=>openWorker(null); box.append(add);
+  if(typeof liveUI==="function") liveUI();
+}
+let editing=null;
+for(const k of STAFF_LANGS){const o=document.createElement("option");o.value=k;o.textContent=`${LANGS[k].name} (${LANGS[k].native})`;$("w-lang").append(o)}
+function openWorker(w,title){editing=w;
+  if(w && w.lang!=="auto" && ![...$("w-lang").options].some(o=>o.value===w.lang)){const o=document.createElement("option");o.value=w.lang;o.textContent=`${LANGS[w.lang].name} (${LANGS[w.lang].native})`;$("w-lang").append(o)}
+  $("w-name").value=w?w.name:"";$("w-lang").value=(w&&w.lang!=="auto")?w.lang:"ne";$("w-del").hidden=!w;
+  $("wsheet").querySelector("h2").textContent=title||(w?"직원 수정":"직원 추가");$("wsheet").hidden=false}
+$("wform").onsubmit=e=>{e.preventDefault();const name=$("w-name").value.trim();if(!name)return;
+  if(editing){const old=editing.lang;editing.name=name;editing.lang=$("w-lang").value;delete editing.example;delete editing.guest;
+    if(live.on && live.worker===editing && old!==editing.lang){ if(live.ws.w) reopen("w"); else openSession("w"); liveNote(`${LANGS[editing.lang].name}로 바꿨습니다.`) }}
+  else{const w={id:"w"+Date.now(),name,lang:$("w-lang").value};workers.push(w);current=w.id}
+  store.set("workers",workers);store.set("current",current);$("wsheet").hidden=true;renderAll()};
+$("w-cancel").onclick=()=>{$("wsheet").hidden=true};
+$("w-del").onclick=()=>{if(!editing)return;if($("w-del").dataset.confirm!=="1"){$("w-del").dataset.confirm="1";$("w-del").textContent="한 번 더 누르면 삭제";return}
+  workers=workers.filter(x=>x!==editing);delete feeds[editing.id];if(!workers.length)workers=[{id:"w"+Date.now(),name:"직원",lang:"ne"}];
+  current=workers[0].id;store.set("workers",workers);store.set("feeds",feeds);store.set("current",current);
+  $("w-del").dataset.confirm="";$("w-del").textContent="이 직원 삭제";$("wsheet").hidden=true;renderAll()};
+
+/* ---------- speech out ---------- */
+let voices=[];
+function loadVoices(){try{voices=speechSynthesis.getVoices()}catch{voices=[]}}
+loadVoices(); try{speechSynthesis.onvoiceschanged=()=>{loadVoices();renderFeed()}}catch{}
+const voiceFor = code => voices.find(v=>(v.lang||"").toLowerCase().replace("_","-").startsWith(code));
+function speak(text,code){try{const u=new SpeechSynthesisUtterance(text);const v=voiceFor(code);if(v){u.voice=v;u.lang=v.lang}else u.lang=code;speechSynthesis.cancel();speechSynthesis.speak(u)}catch{}}
+const SPK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
+
+/* ---------- live voice interpreting (Gemini Live Translate) ----------
+   마이크 소리를 세션 2개에 동시에 보낸다.
+   ko 세션: 직원 말 → 한국어 음성 (한국어로 말하면 침묵)
+   w  세션: 대표 말 → 직원 언어 음성 (직원 언어로 말하면 침묵)
+   통역 음성이 나오는 동안은 마이크 전송을 멈춰 스피커 소리가 다시 통역되지 않게 한다. */
+const LIVE_MODEL="gemini-3.5-live-translate-preview";
+const LIVE_URL="wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=";
+const WORKLET=`class P extends AudioWorkletProcessor{constructor(){super();this.r=sampleRate/16000;this.acc=0;this.sum=0;this.cnt=0;this.buf=new Int16Array(1600);this.n=0}
+process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;
+for(let i=0;i<ch.length;i++){this.sum+=ch[i];this.cnt++;this.acc+=1;if(this.acc>=this.r){this.acc-=this.r;let v=this.sum/this.cnt;this.sum=0;this.cnt=0;v=Math.max(-1,Math.min(1,v));this.buf[this.n++]=v<0?v*32768:v*32767;
+if(this.n===1600){let s=0;for(let k=0;k<1600;k++)s+=Math.abs(this.buf[k]);this.port.postMessage({pcm:this.buf.buffer.slice(0),lvl:s/1600/32768});this.n=0}}}return true}}
+registerProcessor("pcm16k",P);`;
+const live={on:false,ws:{},turn:{},idle:{},retry:{},micCtx:null,outCtx:null,stream:null,node:null,nextT:0,wake:null,worker:null};
+function b64(buf){let s="";const u=new Uint8Array(buf);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)}
+function playPcm(data){
+  const ctx=live.outCtx; if(!ctx) return;
+  const bin=atob(data), n=bin.length>>1, buf=ctx.createBuffer(1,n,24000), d=buf.getChannelData(0);
+  for(let i=0;i<n;i++){let v=bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8);if(v>=32768)v-=65536;d[i]=v/32768}
+  const src=ctx.createBufferSource(); src.buffer=buf; src.connect(ctx.destination);
+  const t=Math.max(ctx.currentTime+0.03,live.nextT); src.start(t); live.nextT=t+buf.duration;
+}
+const speaking=()=>!!live.outCtx && live.outCtx.currentTime < live.nextT+0.35;
+function meter(l){const bars=$("live-btn").querySelectorAll(".meter i");const h=Math.min(1,l*14);bars.forEach((b,i)=>{b.style.height=(4+22*h*[.5,.8,1,.8,.5][i])+"px"})}
+function liveNote(t){$("live-text").hidden=!t;$("live-text").textContent=t||""}
+function liveUI(){
+  const b=$("live-btn"), w=live.on&&live.worker?live.worker:cw(), need=w.lang==="auto"?1:2;
+  const ready=live.on && Object.values(live.ws).length>=need && Object.values(live.ws).every(x=>x.ready);
+  const detecting=live.on && w.lang==="auto";
+  b.classList.toggle("on",ready); b.classList.toggle("wait",live.on&&!ready); b.setAttribute("aria-pressed",String(live.on));
+  $("live-label").textContent = !live.on ? "실시간 대화 시작" : !ready ? "연결 중…" : detecting ? "언어 듣는 중 · 누르면 종료" : "대화 중 · 누르면 종료";
+  $("live-sub").textContent = detecting&&ready ? "상대가 먼저 말하게 하세요" : ready ? "번갈아 말씀하세요" : `${w.name} · ${LANGS[w.lang].native} ↔ 한국어`;
+  $("greet").hidden=!(detecting&&ready); $("cap").hidden=!ready; $("quick").hidden=live.on; if(!live.on) meter(0);
+}
+function showCap(t){
+  const owner=(t.lang||"").startsWith("ko"); const who=$("cap-who");
+  who.className="who2 "+(owner?"owner":"staff"); who.textContent=owner?"대표":live.worker.name;
+  const txt=$("cap-txt"); txt.textContent=t.inp.trim()||"…";
+  if(t.out.trim()){const s=document.createElement("small");s.textContent="→ "+t.out.trim();txt.append(s)}
+}
+function finishTurn(role){
+  clearTimeout(live.idle[role]); const t=live.turn[role]; live.turn[role]=null;
+  if(role==="w" && settings.accurate && t && t.inp.trim() && normLang(t.lang||"ko")==="ko" && live.worker.lang!=="auto"){ accurateTurn(t.inp.trim(), live.worker); return; }
+  if(!t||!t.out.trim()) return;
+  const w=live.worker;
+  if(w.lang==="auto" && role==="ko"){ const code=normLang(t.lang); if(code && code!=="ko") setDetected(code) }
+  const list=feeds[w.id]||(feeds[w.id]=[]);
+  for(let i=list.length-1;i>=0;i--) if(list[i].example) list.splice(i,1);
+  const m={from:role==="ko"?"staff":"owner",orig:t.inp.trim()||"(음성)",tr:t.out.trim(),lang:w.lang,terms:[],back:"",check:"",voice:true};
+  list.push(m); store.set("feeds",feeds); if(current===w.id) renderFeed();
+  if(m.from==="owner" && settings.key) backTranslate(m,w);
+}
+/* ---------- 정확 모드: 용어집 번역(OpenRouter) + Gemini 음성 ---------- */
+const TTS_NEW="gemini-3.8-flash-tts", TTS_OLD="gemini-3.1-flash-tts-preview", GAPI="https://generativelanguage.googleapis.com/v1beta/";
+function findAudio(o){let hit=null;(function walk(x){if(!x||typeof x!=="object")return;if(Array.isArray(x)){x.forEach(walk);return}
+  if(x.type==="audio"&&typeof x.data==="string")hit=x.data; if(x.inlineData&&x.inlineData.data)hit=x.inlineData.data; for(const k in x)walk(x[k])})(o);return hit}
+async function geminiTTS(text){
+  if(!settings.gkey) throw new Error("no key");
+  const k="?key="+encodeURIComponent(settings.gkey);
+  let r=await fetch(GAPI+"interactions"+k,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({model:TTS_NEW,input:[{type:"user_input",content:[{type:"text",text}]}],response_format:{type:"audio"},generation_config:{speech_config:[{voice:"Kore"}]}})});
+  let d=r.ok?await r.json():null, a=d&&findAudio(d);
+  if(!a){ // 예전 방식으로 한 번 더
+    r=await fetch(GAPI+"models/"+TTS_OLD+":generateContent"+k,{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({contents:[{parts:[{text}]}],generationConfig:{responseModalities:["AUDIO"],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}}})});
+    d=r.ok?await r.json():null; a=d&&findAudio(d);
+  }
+  if(!a) throw new Error("tts "+r.status);
+  return a;
+}
+let ttsCtx=null;
+async function playB64Audio(b64s){
+  const ctx=live.outCtx||(ttsCtx||(ttsCtx=new AudioContext())); try{await ctx.resume()}catch{}
+  const bin=atob(b64s), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  let buf;
+  if(bin.slice(0,4)==="RIFF"){ buf=await ctx.decodeAudioData(u.buffer) }
+  else { const n=u.length>>1; buf=ctx.createBuffer(1,n,24000); const d=buf.getChannelData(0); const v=new DataView(u.buffer); for(let i=0;i<n;i++) d[i]=v.getInt16(2*i,true)/32768 }
+  const src=ctx.createBufferSource(); src.buffer=buf; src.connect(ctx.destination);
+  const start=ctx===live.outCtx?Math.max(ctx.currentTime+0.03,live.nextT):ctx.currentTime+0.03; src.start(start);
+  if(ctx===live.outCtx) live.nextT=start+buf.duration;
+}
+async function speakSmart(text,code){
+  try{ await playB64Audio(await geminiTTS(text)); return "gemini" }
+  catch{ if(voiceFor(LANGS[code]?.tts||code)){ speak(text,LANGS[code].tts); return "phone" } return "none" }
+}
+async function accurateTurn(text,w){
+  if(!settings.key){ liveNote("정확 모드는 OpenRouter 키가 있어야 합니다. 설정에서 넣어 주세요."); return }
+  const list=feeds[w.id]||(feeds[w.id]=[]); for(let i=list.length-1;i>=0;i--) if(list[i].example) list.splice(i,1);
+  const m={from:"owner",orig:text,lang:w.lang,pending:true,voice:true,accurate:true}; list.push(m); if(current===w.id) renderFeed();
+  $("cap-who").className="who2 owner"; $("cap-who").textContent="대표"; $("cap-txt").textContent=text; const sm=document.createElement("small"); sm.textContent="정확 통역 중…"; $("cap-txt").append(sm);
+  try{
+    const r=parseJSON(await callModel(buildPrompt(text,w,"ko")));
+    if(!r||!r.translation) throw new Error("번역 결과를 읽지 못했습니다. 다시 말씀해 주세요.");
+    m.tr=String(r.translation); m.back=String(r.back_ko||""); m.terms=Array.isArray(r.terms)?r.terms.map(String).slice(0,6):[]; m.check=String(r.check||"");
+    delete m.pending; if(current===w.id) renderFeed();
+    sm.textContent="→ "+m.tr;
+    const how=await speakSmart(m.tr,w.lang);
+    if(how==="none") liveNote("이 언어는 음성으로 읽을 수 없어 화면 글자로만 보여 줍니다. 직원에게 화면을 보여 주세요.");
+  }catch(e){ m.error=(e instanceof TypeError)?"연결에 실패했습니다. 인터넷을 확인하세요.":(e.message||"정확 통역 실패"); delete m.pending }
+  store.set("feeds",feeds); if(current===w.id) renderFeed();
+}
+function renderAcc(){ $("acc-btn").setAttribute("aria-pressed",String(!!settings.accurate));
+  $("acc-hint").textContent = settings.accurate ? (settings.key?"대표님 지시: 용어집 적용 번역 → 음성 · 직원 말은 즉시 통역":"OpenRouter 키가 필요합니다 (설정)") : "작업 지시에 축산 용어집 적용 · 2~4초 느림"; }
+$("acc-btn").onclick=()=>{ settings.accurate=!settings.accurate; store.set("settings",settings); renderAcc(); };
+renderAcc();
+function setDetected(code){
+  const w=live.worker; ensureLang(code); w.lang=code; w.name=`새 상대 (${LANGS[code].name})`;
+  store.set("workers",workers); renderWorkers();
+  liveNote(`${LANGS[code].name}(${LANGS[code].native})로 들립니다. 이제 대표님 말도 ${LANGS[code].name}로 통역합니다. 언어가 다르면 맨 앞 귀표를 눌러 고치세요.`);
+  if(live.on) openSession("w"); liveUI();
+}
+async function backTranslate(m,w){
+  try{
+    const out=await callModel(`Translate this ${LANGS[w.lang].en} sentence literally into Korean so a Korean farm owner can check what the worker heard. Reply with only the Korean sentence.\n\n${m.tr}`);
+    m.back=out.trim().replace(/^["“]|["”]$/g,""); store.set("feeds",feeds); if(current===w.id) renderFeed();
+  }catch{}
+}
+function closeMsg(ev){
+  const r=String(ev.reason||"");
+  if(/api key|API_KEY|permission|unauth/i.test(r)) return "Gemini 키가 맞지 않습니다. 설정에서 다시 확인하세요.";
+  if(/quota|exhaust|rate/i.test(r)) return "Gemini 사용 한도에 닿았습니다. 잠시 후 다시 하거나 Google 결제를 연결하세요.";
+  if(/not found|model/i.test(r)) return "실시간 통역 모델을 쓸 수 없습니다. 앱을 최신 버전으로 바꿔 주세요.";
+  if(/language/i.test(r)) return LANGS[live.worker.lang].name+"는 실시간 통역이 지원되지 않습니다.";
+  return "연결이 끊겼습니다"+(r?` (${r.slice(0,60)})`:"")+". 다시 시작해 주세요.";
+}
+function openSession(role){
+  const target = role==="ko" ? "ko" : live.worker.lang;
+  const ws=new WebSocket(LIVE_URL+encodeURIComponent(settings.gkey)); ws.ready=false; live.ws[role]=ws;
+  ws.onopen=()=>ws.send(JSON.stringify({setup:{model:"models/"+LIVE_MODEL,generationConfig:{responseModalities:["AUDIO"],translationConfig:{targetLanguageCode:target,echoTargetLanguage:false}},inputAudioTranscription:{},outputAudioTranscription:{}}}));
+  ws.onmessage=async ev=>{
+    let raw=ev.data; if(typeof raw!=="string") raw=await (raw instanceof Blob?raw.text():new Response(raw).text());
+    let m; try{m=JSON.parse(raw)}catch{return}
+    if(live.ws[role]!==ws) return;
+    if(m.setupComplete){ws.ready=true;live.retry[role]=0;liveUI();return}
+    if(m.goAway){reopen(role);return}
+    const c=m.serverContent; if(!c) return;
+    const t=live.turn[role]||(live.turn[role]={inp:"",out:"",lang:""});
+    if(c.inputTranscription?.text){t.inp+=c.inputTranscription.text;if(c.inputTranscription.languageCode)t.lang=c.inputTranscription.languageCode}
+    if(c.outputTranscription?.text) t.out+=c.outputTranscription.text;
+    if(c.inputTranscription?.text||c.outputTranscription?.text){
+      // 두 세션이 같은 말을 듣으므로, 말한 사람 방향의 세션 자막만 보여준다
+      const ownerSpoke=(t.lang||"").startsWith("ko");
+      if(!t.lang || (ownerSpoke&&role==="w") || (!ownerSpoke&&role==="ko")) showCap(t);
+    }
+    if(!(role==="w" && settings.accurate)) for(const p of (c.modelTurn?.parts||[])) if(p.inlineData?.data) playPcm(p.inlineData.data);
+    clearTimeout(live.idle[role]);
+    if(c.turnComplete||c.generationComplete) finishTurn(role);
+    else live.idle[role]=setTimeout(()=>finishTurn(role),1800);
+  };
+  ws.onclose=ev=>{
+    if(live.ws[role]!==ws) return; ws.ready=false; finishTurn(role);
+    if(!live.on) return;
+    if(ev.code===1007||ev.code===1008||(live.retry[role]||0)>=4){stopLive();liveNote(closeMsg(ev));return}
+    reopen(role);
+  };
+}
+function reopen(role){
+  const old=live.ws[role]; finishTurn(role);
+  const n=live.retry[role]=(live.retry[role]||0)+1; live.ws[role]={ready:false};
+  try{old&&old.close&&old.close()}catch{} liveUI();
+  setTimeout(()=>{if(live.on) openSession(role)}, Math.min(4000,400*2**n));
+}
+async function startLive(guest){
+  if(!settings.gkey){openSettings();return}
+  if(!navigator.onLine){liveNote("인터넷 연결이 없어 대화할 수 없습니다.");return}
+  if(guest===true){
+    const g={id:"w"+Date.now(),name:"처음 보는 사람",lang:"auto",guest:true};
+    workers.unshift(g); current=g.id; store.set("current",current); renderAll();
+    live.worker=g;
+  } else live.worker=cw();
+  live.on=true; live.retry={}; liveNote(""); liveUI();
+  try{
+    live.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  }catch{live.on=false;liveUI();liveNote("마이크를 쓸 수 없습니다. 주소창 왼쪽 자물쇠 → 권한 → 마이크를 허용해 주세요.");return}
+  try{
+    live.micCtx=new AudioContext(); live.outCtx=new AudioContext({sampleRate:24000}); live.nextT=0;
+    await live.outCtx.resume();
+    await live.micCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET],{type:"application/javascript"})));
+    const src=live.micCtx.createMediaStreamSource(live.stream);
+    live.node=new AudioWorkletNode(live.micCtx,"pcm16k");
+    const mute=live.micCtx.createGain(); mute.gain.value=0;
+    src.connect(live.node); live.node.connect(mute); mute.connect(live.micCtx.destination);
+    live.node.port.onmessage=e=>{
+      meter(speaking()?0:e.data.lvl); if(speaking()) return;
+      const msg=JSON.stringify({realtimeInput:{audio:{data:b64(e.data.pcm),mimeType:"audio/pcm;rate=16000"}}});
+      for(const ws of Object.values(live.ws)) if(ws.ready&&ws.readyState===1) ws.send(msg);
+    };
+  }catch{stopLive();liveNote("이 브라우저에서는 실시간 대화를 쓸 수 없습니다. 크롬 최신 버전에서 열어 주세요.");return}
+  openSession("ko"); if(live.worker.lang!=="auto") openSession("w");
+  try{live.wake=await navigator.wakeLock?.request("screen")}catch{}
+}
+function stopLive(){
+  live.on=false;
+  for(const r of Object.keys(live.ws)){finishTurn(r);try{live.ws[r].close&&live.ws[r].close()}catch{}}
+  live.ws={}; live.stream?.getTracks().forEach(t=>t.stop()); live.stream=null;
+  try{live.node&&(live.node.port.onmessage=null)}catch{}
+  const mc=live.micCtx, oc=live.outCtx; live.micCtx=null;
+  try{mc&&mc.close()}catch{}
+  const left=oc?Math.max(0,live.nextT-oc.currentTime):0; setTimeout(()=>{try{oc&&oc.close()}catch{} if(live.outCtx===oc) live.outCtx=null},left*1000+300);
+  try{live.wake?.release()}catch{} live.wake=null;
+  const g=live.worker;
+  if(g && g.guest){
+    if(g.lang==="auto"){ workers=workers.filter(x=>x!==g); delete feeds[g.id]; current=workers[0]?.id; store.set("workers",workers); store.set("current",current); renderAll(); }
+    else { store.set("workers",workers); openWorker(g,"새 상대 이름 저장"); $("w-name").value=""; $("w-name").placeholder=`이름 (${LANGS[g.lang].name})`; }
+  }
+  liveUI();
+}
+$("live-btn").onclick=()=>live.on?stopLive():startLive();
+document.addEventListener("visibilitychange",async()=>{if(live.on&&document.visibilityState==="visible"&&!live.wake){try{live.wake=await navigator.wakeLock?.request("screen")}catch{}}});
+
+/* ---------- feed ---------- */
+const feed = () => feeds[current] || (feeds[current]=[]);
+function renderFeed(){
+  const box=$("feed"); box.textContent=""; const list=feed(), w=cw();
+  if(list.some(m=>m.example)){const n=document.createElement("div");n.className="note";n.textContent="예시 대화 · 첫 통역을 하면 사라집니다";box.append(n)}
+  if(!list.length){const p=document.createElement("p");p.className="empty";p.textContent=`${w.name} 님과의 대화가 여기에 쌓입니다. 아래 버튼을 누르고 말하세요.`;box.append(p)}
+  for(const m of list){
+    const el=document.createElement("article"); el.className="msg "+m.from+(m.pending?" pending":"");
+    const who=document.createElement("div"); who.className="who";
+    who.textContent = m.from==="owner" ? `대표 · 한국어 → ${LANGS[m.lang].name}` : `${w.name} · ${LANGS[m.lang].native} → 한국어`;
+    const orig=document.createElement("div"); orig.className="orig"; orig.lang = m.from==="owner"?"ko":m.lang; orig.textContent=m.orig;
+    const trLang = m.from==="owner" ? m.lang : "ko";
+    const tr=document.createElement("div"); tr.className="tr"; tr.lang=trLang; tr.textContent = m.pending ? "통역 중…" : (m.tr||"");
+    el.append(who,orig,tr);
+    if(m.error){const e=document.createElement("div");e.className="err";e.textContent=m.error;el.append(e)}
+    if(m.back){const b=document.createElement("div");b.className="back";const s=document.createElement("b");s.textContent="역번역 확인 ";b.append(s,document.createTextNode(m.back));el.append(b)}
+    if(!m.pending && m.tr){
+      const row=document.createElement("div"); row.className="row";
+      if(m.voice){const c=document.createElement("span");c.className="chip";c.textContent=m.accurate?"정확 모드":"음성 통역";row.append(c)}
+      for(const t of (m.terms||[])){const c=document.createElement("span");c.className="chip";c.textContent="용어 · "+t;row.append(c)}
+      if(m.check){const c=document.createElement("span");c.className="chip warn";c.textContent=m.check;row.append(c)}
+      const sp=document.createElement("button"); sp.className="speak"; sp.innerHTML=SPK+"<span>읽어주기</span>";
+      const code=LANGS[trLang].tts; if(!voiceFor(code)&&!settings.gkey){sp.disabled=true;sp.title="이 휴대폰에 해당 언어 음성이 없습니다"}
+      sp.onclick=()=>speakSmart(m.tr,trLang); row.append(sp); el.append(row);
+    }
+    box.append(el);
+  }
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ---------- glossary ---------- */
+function renderGloss(){
+  const tb=$("gbody"); tb.textContent="";
+  gloss.forEach((g,i)=>{
+    const tr=document.createElement("tr");
+    for(const k of ["ko","ne","uz","ru"]){const td=document.createElement("td");td.lang=k;td.textContent=g[k]||"—";tr.append(td)}
+    const td=document.createElement("td"); const b=document.createElement("button"); b.className="st "+(g.ok?"done":"wait"); b.textContent=g.ok?"검수완료":"검수대기";
+    b.onclick=()=>{g.ok=!g.ok;store.set("gloss",gloss);renderGloss()}; td.append(b); tr.append(td);
+    const td2=document.createElement("td"); const d=document.createElement("button"); d.className="del"; d.textContent="×"; d.setAttribute("aria-label",g.ko+" 삭제");
+    d.onclick=()=>{gloss.splice(i,1);store.set("gloss",gloss);renderGloss()}; td2.append(d); tr.append(td2);
+    tb.append(tr);
+  });
+}
+$("gadd").onsubmit=e=>{e.preventDefault();const ko=$("g-ko").value.trim();if(!ko)return;
+  gloss.push({ko,ne:$("g-ne").value.trim(),uz:$("g-uz").value.trim(),ru:$("g-ru").value.trim(),ok:false});store.set("gloss",gloss);
+  for(const id of ["g-ko","g-ne","g-uz","g-ru"])$(id).value="";renderGloss()};
+
+/* ---------- tabs / quick / composer ---------- */
+function tab(which){const chat=which==="chat";$("tab-chat").setAttribute("aria-selected",chat);$("tab-gloss").setAttribute("aria-selected",!chat);$("feed").hidden=!chat;$("gloss").hidden=chat;$("dock").hidden=!chat}
+$("tab-chat").onclick=()=>tab("chat"); $("tab-gloss").onclick=()=>tab("gloss");
+for(const q of QUICK){const b=document.createElement("button");b.textContent=q;b.onclick=()=>translate(q,"ko");$("quick").append(b)}
+const ta=$("input");
+ta.addEventListener("input",()=>{ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,120)+"px"});
+ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendTyped()}});
+$("send").onclick=sendTyped;
+function sendTyped(){const t=ta.value.trim();if(!t)return;ta.value="";ta.style.height="auto";translate(t,null)}
+
+/* ---------- translation (Claude API, direct from phone) ---------- */
+function buildPrompt(text,w,known){
+  const L=LANGS[w.lang];
+  const terms=gloss.filter(g=>g[w.lang]).map(g=>`- ${g.ko} = ${g[w.lang]}`).join("\n")||"(none)";
+  const src = known ? `The message is in ${known==="ko"?"Korean":L.en} (already known; set "source" to "${known}").` : `Detect whether it is Korean or ${L.en} — it is one of those two only.`;
+  return `You are the on-site interpreter at a Korean pig farm. The farm owner speaks Korean. The worker (${w.name}) speaks ${L.en}.
+${src}
+The text may come from speech recognition, so fix obvious recognition errors using farm context.
+
+Rules:
+1. Translate into the other language as short, plain spoken language for barn work. Owner-to-worker: clear, polite work instructions. Worker-to-owner: natural Korean.
+2. Keep every number, pen or crate number, time, dose and count exactly.
+3. When a concept below appears, use exactly the glossary term in the target language:
+${terms}
+4. If the owner spoke, back-translate your translation literally into Korean in "back_ko" so the owner can verify it. If the worker spoke, "back_ko" is "".
+5. If something is ambiguous (unclear number, animal, or location), write a very short Korean warning in "check"; otherwise "".
+6. "terms" lists the Korean glossary words you used.
+
+Message:
+"""${text}"""
+
+Reply with only JSON, no other text: {"source":"ko" or "${w.lang}","translation":"...","back_ko":"...","terms":[],"check":""}`;
+}
+function parseJSON(t){try{return JSON.parse(t)}catch{} const a=t.indexOf("{"),b=t.lastIndexOf("}"); if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1))}catch{}} return null}
+/* ---------- model list ---------- */
+function pick(list,prefs,n){const out=[];for(const re of prefs)for(const m of list)if(re.test(m.id)&&!out.includes(m.id)&&out.length<n)out.push(m.id);return out}
+async function loadModels(){
+  try{
+    const r=await fetch(OR_URL+"/models"); if(!r.ok) throw 0;
+    const all=(await r.json()).data||[];
+    const text=all.filter(m=>(m.architecture?.output_modalities||["text"]).includes("text")&&!/guard|safety|code|coder|embed/i.test(m.id));
+    const free=text.filter(m=>m.id.endsWith(":free"));
+    freeModels=pick(free,FREE_PREF,6); if(all.some(m=>m.id==="openrouter/free")) freeModels.push("openrouter/free");
+    paidModels=text.filter(m=>!m.id.endsWith(":free")).filter(m=>PAID_PREF.some(re=>re.test(m.id)))
+      .sort((a,b)=>PAID_PREF.findIndex(re=>re.test(a.id))-PAID_PREF.findIndex(re=>re.test(b.id))).slice(0,4)
+      .map(m=>({id:m.id,won:Math.round((Number(m.pricing?.prompt||0)*500+Number(m.pricing?.completion||0)*150)*100*1400)}));
+    store.set("freeModels",freeModels); store.set("paidModels",paidModels);
+  }catch{}
+  renderModelSelect();
+}
+function chain(){
+  if(settings.model!=="auto") return [settings.model];
+  const f=freeModels.length?freeModels:FALLBACK_FREE; return f.slice(0,3);
+}
+function renderModelSelect(){
+  const sel=$("s-model"); const keep=settings.model; sel.length=1;
+  const g1=document.createElement("optgroup"); g1.label="무료";
+  for(const id of freeModels){const o=document.createElement("option");o.value=id;o.textContent=id.replace(":free","");g1.append(o)}
+  const g2=document.createElement("optgroup"); g2.label="유료 · 고품질 (충전금에서 차감)";
+  for(const m of paidModels){const o=document.createElement("option");o.value=m.id;o.textContent=`${m.id} · 100문장 약 ${Math.max(1,m.won)}원`;g2.append(o)}
+  if(g1.children.length) sel.append(g1); if(g2.children.length) sel.append(g2);
+  sel.value=[...sel.options].some(o=>o.value===keep)?keep:"auto";
+  $("s-model-note").textContent = freeModels.length
+    ? `자동은 ${chain().map(x=>x.split("/")[1].replace(":free","")).join(" → ")} 순서로 시도합니다. 네팔어·우즈베크어가 어색하면 유료 모델을 고르세요.`
+    : "무료 모델 목록을 받지 못해 기본 목록을 씁니다.";
+}
+
+/* ---------- usage counter (this phone) ---------- */
+const today=()=>new Date().toLocaleDateString("sv");
+function bump(){const u=store.get("usage",{});u[today()]=(u[today()]||0)+1;store.set("usage",{[today()]:u[today()]})}
+function usageText(){const n=(store.get("usage",{})[today()])||0;return `이 휴대폰에서 오늘 ${n}회 통역. 무료 모델 한도는 충전한 계정 기준 하루 1,000회, 분당 20회입니다.`}
+
+async function callModel(prompt){
+  const res = await fetch(OR_URL+"/chat/completions",{
+    method:"POST",
+    headers:{"content-type":"application/json","authorization":"Bearer "+settings.key,"HTTP-Referer":location.origin,"X-Title":"Seongjin Interpreter"},
+    body:JSON.stringify({models:chain(),messages:[{role:"user",content:prompt}],max_tokens:1200,temperature:0.2})
+  });
+  let data=null; try{data=await res.json()}catch{}
+  if(!res.ok || data?.error){
+    const status=data?.error?.code||res.status, msg=String(data?.error?.message||"");
+    let text;
+    if(/data policy|privacy/i.test(msg)) text="OpenRouter 설정에서 무료 모델 사용을 허용해야 합니다. openrouter.ai → Settings → Privacy에서 무료 모델(Free endpoints) 항목을 켜 주세요.";
+    else if(status==401) text="OpenRouter 키가 맞지 않습니다. 설정에서 다시 확인하세요.";
+    else if(status==402) text="충전 잔액이 부족합니다. 무료 모델로 바꾸거나 충전해 주세요.";
+    else if(status==429) text="요청이 몰렸습니다(무료 모델 혼잡 또는 하루 한도). 잠시 후 다시 하거나 다른 모델을 고르세요.";
+    else if(status==404) text="선택한 모델이 지금 없습니다. 설정에서 ‘자동’으로 바꿔 주세요.";
+    else text=`번역 서버 오류 (${status}) ${msg.slice(0,80)}`;
+    const err=new Error(text); err.status=status; throw err;
+  }
+  bump();
+  const c=data?.choices?.[0]?.message?.content;
+  const out = Array.isArray(c) ? c.map(p=>p.text||"").join("") : String(c||"");
+  return out.replace(/<think>[\s\S]*?<\/think>/g,"");
+}
+async function translate(text,known){
+  if(busy) return;
+  if(!settings.key){liveNote("글로 통역하려면 설정에서 OpenRouter 키를 넣어 주세요. 음성 대화는 아래 버튼을 쓰세요.");return}
+  if(!navigator.onLine){$("live-text").hidden=false;$("live-text").textContent="인터넷 연결이 없어 통역할 수 없습니다.";return}
+  const w=cw(); if(w.lang==="auto"){liveNote("상대 언어를 먼저 감지해야 글로 통역할 수 있습니다.");return}
+  const list=feed();
+  for(let i=list.length-1;i>=0;i--) if(list[i].example) list.splice(i,1);
+  const m={from:known && known!=="ko" ? "staff":"owner",orig:text,lang:w.lang,pending:true}; list.push(m);
+  busy=true; setBusy(true); renderFeed();
+  try{
+    const r=parseJSON(await callModel(buildPrompt(text,w,known)));
+    if(!r||!r.translation) throw new Error("번역 결과를 읽지 못했습니다. 다시 해 주세요.");
+    const src=String(known||r.source||"ko");
+    m.from = src==="ko" ? "owner" : "staff";
+    m.tr=String(r.translation); m.back = m.from==="owner" ? String(r.back_ko||"") : "";
+    m.terms=Array.isArray(r.terms)?r.terms.map(String).slice(0,6):[]; m.check=String(r.check||"");
+    if(settings.auto){ speakSmart(m.tr, m.from==="owner"?w.lang:"ko") }
+    setLive(true);
+  }catch(e){
+    m.error = (e instanceof TypeError) ? "연결에 실패했습니다. 인터넷 상태를 확인하세요." : (e.message||"알 수 없는 오류");
+    if(e.status===401) setLive(false);
+  }finally{
+    delete m.pending; busy=false; setBusy(false); store.set("feeds",feeds); renderFeed();
+  }
+}
+function setBusy(on){$("send").disabled=on}
+function setLive(on){const any=!!(settings.gkey||settings.key);$("status").classList.toggle("live",on&&any);$("status-text").textContent=(on&&any)?"준비됨":(any?"키 확인 필요":"설정 필요");$("banner").hidden=any}
+
+/* ---------- settings ---------- */
+function openSettings(){$("s-gkey").value=settings.gkey;$("s-key").value=settings.key;$("s-auto").checked=settings.auto;$("s-test-out").textContent="";$("s-usage").textContent=usageText();renderModelSelect();$("ssheet").hidden=false}
+$("open-settings").onclick=openSettings; $("banner").onclick=openSettings;
+$("s-model").onchange=()=>{settings.model=$("s-model").value;renderModelSelect()};
+$("s-cancel").onclick=()=>{$("ssheet").hidden=true};
+$("sform").onsubmit=e=>{e.preventDefault();settings.gkey=$("s-gkey").value.trim();settings.key=$("s-key").value.trim();settings.model=$("s-model").value;settings.auto=$("s-auto").checked;store.set("settings",settings);$("ssheet").hidden=true;setLive(true)};
+function testGemini(key){
+  return new Promise(res=>{
+    let done=false; const fin=(ok,msg)=>{if(done)return;done=true;try{ws.close()}catch{}res({ok,msg})};
+    const ws=new WebSocket(LIVE_URL+encodeURIComponent(key));
+    ws.onopen=()=>ws.send(JSON.stringify({setup:{model:"models/"+LIVE_MODEL,generationConfig:{responseModalities:["AUDIO"],translationConfig:{targetLanguageCode:"ne",echoTargetLanguage:false}}}}));
+    ws.onmessage=async ev=>{let raw=ev.data;if(typeof raw!=="string")raw=await (raw instanceof Blob?raw.text():new Response(raw).text());if(/setupComplete/.test(raw))fin(true,"음성 대화 연결 성공")};
+    ws.onclose=ev=>fin(false,closeMsg(ev).replace(" 다시 시작해 주세요.",""));
+    ws.onerror=()=>{}; setTimeout(()=>fin(false,"음성 대화 응답 없음 (인터넷 확인)"),10000);
+  });
+}
+$("s-test").onclick=async()=>{const prev={...settings};settings.key=$("s-key").value.trim();settings.model=$("s-model").value;
+  const out=$("s-test-out"); out.textContent="확인 중…"; out.style.color=""; const lines=[]; let allOk=true;
+  const gk=$("s-gkey").value.trim();
+  if(gk){live.worker=live.worker||cw();const g=await testGemini(gk);lines.push(g.msg);allOk=allOk&&g.ok}
+  if(settings.key){const t0=performance.now();
+    try{const o=await callModel('Translate into Nepali and reply with only JSON {"t":"..."}: "보온등 켜"');const j=parseJSON(o);
+      lines.push(`글 통역 성공 · ${((performance.now()-t0)/1000).toFixed(1)}초 · ${j?.t||o.slice(0,40)}`)}
+    catch(e){allOk=false;lines.push((e instanceof TypeError)?"글 통역 연결 실패: 인터넷 확인":e.message)}}
+  if(!lines.length){lines.push("키를 먼저 넣어 주세요.");allOk=false}
+  out.textContent=lines.join(" / "); out.style.color=allOk?"var(--ok)":"var(--warn)";
+  settings.key=prev.key;settings.model=prev.model};
+$("s-clear").onclick=()=>{feeds[current]=[];store.set("feeds",feeds);renderFeed();$("ssheet").hidden=true};
+for(const id of ["wsheet","ssheet"]) $(id).addEventListener("click",e=>{if(e.target.id===id)$(id).hidden=true});
+
+function renderAll(){renderWorkers();renderFeed()}
+renderAll(); renderGloss(); setLive(true); loadModels();
+
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "성진 현장통역",
+  "short_name": "현장통역",
+  "description": "성진축산 다국어 현장 통역 앱 (한국어 ↔ 네팔어·우즈베크어·러시아어 등)",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E7EBE4",
+  "theme_color": "#16221D",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
