@@ -88,6 +88,14 @@ class Player(private val voiceCall: Boolean) {
         return playUntil
     }
 
+    /** 통역 음성이 나오던 중에 새로 말하기 시작하면 바로 끊는다 */
+    @Synchronized
+    fun stopNow() {
+        while (queue.tryReceive().isSuccess) { /* 대기 중인 조각 버림 */ }
+        track?.let { runCatching { it.pause(); it.flush(); it.play() } }
+        playUntil = 0
+    }
+
     fun speaking(tailMs: Long = 250): Boolean = SystemClock.elapsedRealtime() < playUntil + tailMs
     fun remainingMs(): Long = maxOf(0L, playUntil - SystemClock.elapsedRealtime())
 

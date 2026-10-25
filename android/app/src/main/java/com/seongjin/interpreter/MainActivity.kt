@@ -49,6 +49,10 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -195,6 +199,8 @@ fun AppScreen(app: App) {
 
         if (tab == 0) Dock(live, settings, current,
             onToggleLive = { if (live.on) engine.stop() else startLive(false) },
+            onPressDown = { engine.pressDown(it) },
+            onPressUp = { owner, ms -> engine.pressUp(owner, ms) },
             onAccurate = { repo.setSettings(settings.copy(accurate = it)) },
             onSend = { engine.translateTyped(it) },
             onDismissNote = { engine.clearNote() })
@@ -386,7 +392,8 @@ fun SpeakerIcon(color: Color, waves: Float) {
 private val QUICK = listOf("분만실 온도 확인해", "보온등 켜", "이유 자돈 사료 급여해", "백신 몇 마리 남았어?", "오늘 작업 끝나면 말해줘", "다친 데 없어? 괜찮아?")
 
 @Composable
-fun Dock(live: LiveUi, settings: AppSettings, w: Worker, onToggleLive: () -> Unit, onAccurate: (Boolean) -> Unit,
+fun Dock(live: LiveUi, settings: AppSettings, w: Worker, onToggleLive: () -> Unit,
+         onPressDown: (Boolean) -> Unit, onPressUp: (Boolean, Long) -> Unit, onAccurate: (Boolean) -> Unit,
          onSend: (String) -> Unit, onDismissNote: () -> Unit) {
     val p = LocalP.current
     var text by remember { mutableStateOf("") }
@@ -419,8 +426,22 @@ fun Dock(live: LiveUi, settings: AppSettings, w: Worker, onToggleLive: () -> Uni
             }
         }
 
-        LiveButton(live, w, onToggleLive)
-        if (live.on && live.diag.isNotEmpty()) Text(live.diag, fontSize = 12.sp, color = p.muted)
+        if (!live.on) StartButton(w, onToggleLive)
+        else {
+            // 누르고 말하기: 누르고 있는 동안 녹음, 손 떼면 통역 · 짧게 톡 누르면 다시 누를 때까지 녹음
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TalkButton(Modifier.weight(1f), owner = true, name = "대표", langLabel = "한국어",
+                    enabled = live.ready && !live.detecting, live = live, onDown = { onPressDown(true) }, onUp = { onPressUp(true, it) })
+                TalkButton(Modifier.weight(1f), owner = false, name = w.name, langLabel = Langs.get(w.lang).native,
+                    enabled = live.ready, live = live, onDown = { onPressDown(false) }, onUp = { onPressUp(false, it) })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (live.diag.isNotEmpty()) live.diag else "연결 중…", fontSize = 12.sp, color = p.muted, modifier = Modifier.weight(1f))
+                Text("대화 끝내기", fontSize = 13.sp, color = p.ink, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(99.dp)).border(1.dp, p.line, RoundedCornerShape(99.dp))
+                        .clickable(onClick = onToggleLive).heightIn(min = 40.dp).wrapContentHeight().padding(horizontal = 14.dp, vertical = 10.dp))
+            }
+        }
 
         if (!live.on) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(QUICK) { q ->
@@ -441,35 +462,72 @@ fun Dock(live: LiveUi, settings: AppSettings, w: Worker, onToggleLive: () -> Uni
 }
 
 @Composable
-fun LiveButton(live: LiveUi, w: Worker, onClick: () -> Unit) {
+fun StartButton(w: Worker, onClick: () -> Unit) {
     val p = LocalP.current
-    val on = live.on && live.ready
-    val bg by animateColorAsState(if (on) p.staff else p.tag, label = "liveBg")
-    val fg = if (on) p.staffInk else p.tagInk
-    val label = when {
-        !live.on -> "실시간 대화 시작"
-        !live.ready -> "연결 중…"
-        live.detecting -> "언어 듣는 중 · 누르면 종료"
-        else -> "대화 중 · 누르면 종료"
-    }
-    val sub = when {
-        live.on && live.ready && live.detecting -> "상대가 먼저 말하게 하세요"
-        live.on && live.ready && live.speaking -> "통역 음성 나오는 중 · 끝나면 말하세요"
-        live.on && live.ready -> "번갈아 말씀하세요"
-        else -> "${w.name} · ${Langs.get(w.lang).native} ↔ 한국어"
-    }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 84.dp).clip(RoundedCornerShape(20.dp)).background(bg)
-            .border(2.dp, if (on) p.staff else p.tagEdge, RoundedCornerShape(20.dp)).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().heightIn(min = 84.dp).clip(RoundedCornerShape(20.dp)).background(p.tag)
+            .border(2.dp, p.tagEdge, RoundedCornerShape(20.dp)).clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        MicIcon(fg)
+        MicIcon(p.tagInk)
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = fg)
-            Text(sub, fontSize = 13.sp, color = fg.copy(alpha = 0.82f))
+            Text("대화 시작", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = p.tagInk)
+            Text("${w.name} · ${Langs.get(w.lang).native} ↔ 한국어 · 미리 연결해 두고 바로 말합니다", fontSize = 13.sp, color = p.tagInk.copy(alpha = 0.82f))
         }
-        Meter(if (live.on) live.level else 0f, fg)
+    }
+}
+
+/** 말하기 버튼: 누르는 순간 녹음 시작(진동), 누르고 있는 동안 듣고, 떼면 통역 */
+@Composable
+fun TalkButton(modifier: Modifier, owner: Boolean, name: String, langLabel: String, enabled: Boolean, live: LiveUi,
+               onDown: () -> Unit, onUp: (Long) -> Unit) {
+    val p = LocalP.current
+    val haptic = LocalHapticFeedback.current
+    val me = if (owner) Talker.OWNER else Talker.STAFF
+    val rec = live.recording == me
+    val busy = live.translating == me
+    val base = if (owner) p.tag else p.staff
+    val fg = if (owner) p.tagInk else p.staffInk
+    val bg by animateColorAsState(if (rec) base else base.copy(alpha = if (enabled) 0.92f else 0.4f), label = "talkBg")
+    val ring by animateDpAsState(if (rec) 5.dp else 0.dp, label = "talkRing")
+    val scale by animateFloatAsState(if (rec) 1.03f else 1f, label = "talkScale")
+    val label = when {
+        rec && live.toggled -> "듣는 중 · 다시 누르면 통역"
+        rec -> "듣는 중 · 손 떼면 통역"
+        busy -> "통역 중…"
+        !enabled && owner && live.detecting -> "상대 언어 감지 후"
+        !enabled -> "연결 중…"
+        else -> "누르고 말하기"
+    }
+    Column(
+        modifier.scale(scale).heightIn(min = 118.dp).clip(RoundedCornerShape(22.dp)).background(bg)
+            .border(ring, Color(0xFFD8442B), RoundedCornerShape(22.dp))
+            .pointerInput(enabled) {
+                detectTapGestures(onPress = {
+                    if (!enabled) return@detectTapGestures
+                    val t0 = System.currentTimeMillis()
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onDown()
+                    tryAwaitRelease()
+                    onUp(System.currentTimeMillis() - t0)
+                })
+            }
+            .semantics { contentDescription = "$name 말하기" }
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MicIcon(fg)
+            Column(Modifier.weight(1f)) {
+                Text(name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = fg, maxLines = 1)
+                Text(langLabel, fontSize = 12.sp, color = fg.copy(alpha = 0.8f), maxLines = 1)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontSize = 13.sp, fontWeight = if (rec) FontWeight.Bold else FontWeight.Normal, color = fg, modifier = Modifier.weight(1f))
+            if (rec) Meter(live.level, fg)
+        }
     }
 }
 

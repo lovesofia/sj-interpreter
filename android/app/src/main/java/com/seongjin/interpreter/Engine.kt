@@ -23,12 +23,17 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
 
-/** 화면에 보여줄 실시간 대화 상태 */
+/** 누가 말하는 중인지 */
+enum class Talker { NONE, OWNER, STAFF }
+
+/** 화면에 보여줄 대화 상태 */
 data class LiveUi(
     val on: Boolean = false,
     val ready: Boolean = false,
     val detecting: Boolean = false,
-    val speaking: Boolean = false,
+    val recording: Talker = Talker.NONE,
+    val toggled: Boolean = false,
+    val translating: Talker = Talker.NONE,
     val level: Float = 0f,
     val capShown: Boolean = false,
     val capOwner: Boolean = false,
@@ -42,23 +47,25 @@ data class LiveUi(
 )
 
 /**
- * 실시간 통역 엔진.
- * 마이크 소리를 통역 세션 2개에 동시에 보낸다.
- *   ko 세션: 직원 말 → 한국어 음성 (대표님 한국어에는 침묵)
- *   w  세션: 대표님 말 → 직원 언어 음성 (직원 말에는 침묵)
- * 통역 음성이 나오는 동안에는 무음을 보내 스피커 소리가 다시 통역되지 않게 한다.
+ * 누르고 말하기 통역 엔진.
+ * - '대화 시작'에서 마이크와 통역 세션 2개를 미리 열어 둔다 (누를 때 연결을 기다리지 않음)
+ *     w  세션: 대표님 말 → 직원 언어 음성
+ *     ko 세션: 직원 말 → 한국어 음성
+ * - 버튼을 누르는 순간부터 (+누르기 직전 0.3초) 그 사람 쪽 세션으로만 소리를 바로 보낸다
+ * - 손을 뗀 뒤 0.5초 더 듣고, 무음 0.8초를 붙여 서버가 말 끝을 확실히 알게 한다
+ * - 세션이 아직 준비 중이면 소리를 버리지 않고 모아 두었다가 준비되면 한꺼번에 보낸다
  */
 class Engine(private val ctx: Context, private val repo: Repo) {
     private val main = CoroutineScope(SupervisorJob() + Executors.newSingleThreadExecutor().asCoroutineDispatcher())
     private val _ui = MutableStateFlow(LiveUi())
     val ui: StateFlow<LiveUi> = _ui.asStateFlow()
 
-    /** 지금 소리 내어 읽고 있는 대화 기록 (읽어주기 버튼 강조용) */
     private val _playingId = MutableStateFlow<Long?>(null)
     val playingId: StateFlow<Long?> = _playingId.asStateFlow()
 
     private var workerId: String = ""
     private val sessions = mutableMapOf<String, LiveSession?>()
+    private val pending = mutableMapOf<String, ArrayDeque<String>>()
     private val retries = mutableMapOf<String, Int>()
     private val turns = mutableMapOf<String, Turn?>()
     private val idle = mutableMapOf<String, Job?>()
@@ -69,16 +76,24 @@ class Engine(private val ctx: Context, private val repo: Repo) {
     private val mediaPlayer = Player(voiceCall = false)
     private val routing = Routing(ctx)
 
-    @Volatile private var chunks = 0L
+    // 녹음 상태 (마이크 스레드와 공유)
+    private val lock = Any()
+    @Volatile private var recRole: String? = null     // "w"=대표, "ko"=직원
+    @Volatile private var tailChunks = -1              // 손 뗀 뒤 남은 0.1초 조각 수 (-1 = 누르고 있는 중)
+    private val preRoll = ArrayDeque<String>()         // 누르기 직전 0.3초
+    private var toggled = false
+    private var tapStops = false
+
     @Volatile private var lastChunkAt = 0L
     @Volatile private var lastLevel = 0f
+    private val silence = Base64.encodeToString(ByteArray(3200), Base64.NO_WRAP)
 
     private class Turn { val inp = StringBuilder(); val out = StringBuilder(); var lang = "" }
 
     private val worker: Worker? get() = repo.worker(workerId)
     private val settings get() = repo.settings.value
 
-    /* ---------------- 시작 / 종료 ---------------- */
+    /* ---------------- 대화 시작 / 끝 ---------------- */
 
     fun start(guest: Boolean) = main.launch {
         if (_ui.value.on) return@launch
@@ -87,7 +102,9 @@ class Engine(private val ctx: Context, private val repo: Repo) {
             Worker(repo.newWorkerId(), "처음 보는 사람", "auto", guest = true).also { repo.upsertWorker(it, front = true); repo.select(it.id) }
         } else repo.current()
         workerId = w.id
-        retries.clear(); turns.clear()
+        retries.clear(); turns.clear(); pending.clear()
+        synchronized(lock) { recRole = null; tailChunks = -1; preRoll.clear() }
+        toggled = false; tapStops = false
         _ui.value = LiveUi(on = true, detecting = w.lang == "auto")
 
         ctx.startForegroundService(Intent(ctx, InterpreterService::class.java))
@@ -100,7 +117,7 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         }
         mic = m
         _ui.update { it.copy(route = route) }
-        chunks = 0; lastChunkAt = SystemClock.elapsedRealtime()
+        lastChunkAt = SystemClock.elapsedRealtime()
 
         openSession("ko")
         if (w.lang != "auto") openSession("w")
@@ -112,9 +129,10 @@ class Engine(private val ctx: Context, private val repo: Repo) {
 
     private fun stopInternal() {
         if (!_ui.value.on && mic == null) return
+        synchronized(lock) { recRole = null; tailChunks = -1 }
         sessions.keys.toList().forEach { finishTurn(it) }
         sessions.values.forEach { it?.close() }
-        sessions.clear()
+        sessions.clear(); pending.clear()
         idle.values.forEach { it?.cancel() }; idle.clear()
         micJob?.cancel(); micJob = null
         diagJob?.cancel(); diagJob = null
@@ -133,37 +151,104 @@ class Engine(private val ctx: Context, private val repo: Repo) {
 
     fun clearGuestPrompt() = _ui.update { it.copy(nameGuestId = null) }
 
-    /** 대화 중에 직원 언어를 바꾸면 그 방향 세션을 새로 연다 */
     fun languageChanged(id: String) = main.launch {
         if (_ui.value.on && id == workerId) {
-            sessions["w"]?.close(); sessions.remove("w"); retries["w"] = 0
+            sessions["w"]?.close(); sessions.remove("w"); retries["w"] = 0; pending.remove("w")
             openSession("w")
             _ui.update { it.copy(detecting = false, note = "${Langs.get(worker!!.lang).name}로 바꿨습니다.") }
         }
     }
 
-    /* ---------------- 마이크 → 서버 ---------------- */
+    /* ---------------- 누르고 말하기 ---------------- */
+
+    /** 버튼을 누른 순간 */
+    fun pressDown(owner: Boolean) = main.launch {
+        if (!_ui.value.on) return@launch
+        val role = if (owner) "w" else "ko"
+        if (owner && worker?.lang == "auto") { note("상대가 먼저 말해야 언어를 알 수 있습니다. 직원 버튼을 눌러 상대가 말하게 하세요."); return@launch }
+        // 한 번 눌러 켜 둔 상태에서 같은 버튼을 다시 누르면 = 끝
+        if (toggled && recRole == role && tailChunks == -1) { toggled = false; tapStops = true; endRecording(); return@launch }
+        if (recRole != null && recRole != role) flushTail()
+        livePlayer.stopNow()             // 통역 음성이 나오던 중이면 바로 끊고 새 말을 듣는다
+        toggled = false; tapStops = false
+        idle[role]?.cancel()
+        synchronized(lock) {
+            recRole = role; tailChunks = -1
+            preRoll.forEach { send(role, it) }   // 누르기 직전 0.3초
+        }
+        _ui.update { it.copy(recording = if (owner) Talker.OWNER else Talker.STAFF, toggled = false, capShown = true,
+            capOwner = owner, capWho = if (owner) "대표" else (worker?.name ?: "직원"), capText = "듣는 중…", capSub = "") }
+    }
+
+    /** 버튼에서 손을 뗀 순간. 짧게 톡 눌렀으면 켜 둔 채로 계속 듣는다 */
+    fun pressUp(owner: Boolean, heldMs: Long) = main.launch {
+        if (tapStops) { tapStops = false; return@launch }
+        val role = if (owner) "w" else "ko"
+        if (recRole != role) return@launch
+        if (heldMs < 450) { toggled = true; _ui.update { it.copy(toggled = true) }; return@launch }
+        endRecording()
+    }
+
+    private fun endRecording() {
+        synchronized(lock) { if (recRole != null && tailChunks == -1) tailChunks = 5 }   // 0.5초 더 듣기
+        val t = if (recRole == "w") Talker.OWNER else Talker.STAFF
+        _ui.update { it.copy(recording = Talker.NONE, toggled = false, translating = t) }
+    }
+
+    /** 다른 사람 버튼을 바로 누른 경우: 앞사람 말을 즉시 마무리 */
+    private fun flushTail() {
+        synchronized(lock) {
+            val r = recRole ?: return
+            repeat(8) { send(r, silence) }
+            recRole = null; tailChunks = -1
+            scheduleFinish(r)
+        }
+    }
+
+    /** lock 안에서 호출. 세션이 준비 전이면 모아 둔다 */
+    private fun send(role: String, b64: String) {
+        val s = sessions[role]
+        if (s != null && s.ready) s.sendAudio(b64)
+        else pending.getOrPut(role) { ArrayDeque() }.let { q -> q.addLast(b64); while (q.size > 600) q.removeFirst() }
+    }
+
+    private fun scheduleFinish(role: String) {
+        main.launch {
+            idle[role]?.cancel()
+            idle[role] = main.launch { delay(3500); finishTurn(role) }
+        }
+    }
+
+    /* ---------------- 마이크 ---------------- */
 
     private suspend fun micLoop(m: Mic) {
         val buf = ByteArray(3200) // 0.1초
-        val silence = Base64.encodeToString(ByteArray(3200), Base64.NO_WRAP)
-        var wasSpeaking = false
+        var n2 = 0
         while (currentCoroutineContext().isActive) {
             val n = m.read(buf)
             if (n <= 0) { delay(20); if (mic == null) break; continue }
-            var sum = 0L
-            var i = 0
+            var sum = 0L; var i = 0
             while (i + 1 < n) { val v = (buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8); sum += kotlin.math.abs(v.toShort().toInt()); i += 2 }
             lastLevel = sum.toFloat() / (n / 2) / 32768f
-            chunks++; lastChunkAt = SystemClock.elapsedRealtime()
-            val sp = livePlayer.speaking()
-            val b64 = if (sp) silence else Base64.encodeToString(buf, 0, n, Base64.NO_WRAP)
-            val targets = synchronized(sessions) { sessions.values.filterNotNull() }
-            targets.forEach { it.sendAudio(b64) }
-            if (sp != wasSpeaking || chunks % 2 == 0L) {
-                wasSpeaking = sp
-                _ui.update { it.copy(speaking = sp, level = if (sp) 0f else lastLevel) }
+            lastChunkAt = SystemClock.elapsedRealtime()
+            val b64 = Base64.encodeToString(buf, 0, n, Base64.NO_WRAP)
+            var finishedRole: String? = null
+            synchronized(lock) {
+                preRoll.addLast(b64); while (preRoll.size > 3) preRoll.removeFirst()
+                val r = recRole
+                if (r != null) {
+                    send(r, b64)
+                    if (tailChunks > 0) {
+                        tailChunks--
+                        if (tailChunks == 0) {
+                            repeat(8) { send(r, silence) }   // 말 끝 알림
+                            recRole = null; tailChunks = -1; finishedRole = r
+                        }
+                    }
+                }
             }
+            finishedRole?.let { scheduleFinish(it) }
+            if (++n2 % 2 == 0) _ui.update { it.copy(level = if (recRole != null) lastLevel else 0f) }
         }
     }
 
@@ -173,7 +258,11 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         val w = worker ?: return
         val target = if (role == "ko") "ko" else w.lang
         val s = LiveSession(settings.geminiKey, target, object : LiveSession.Listener {
-            override fun onReady(s: LiveSession) { main.launch { if (sessions[role] === s) { retries[role] = 0; refreshReady() } } }
+            override fun onReady(s: LiveSession) {
+                // 준비되면 모아 둔 소리를 한꺼번에 보낸다 (첫마디 보존)
+                synchronized(lock) { pending.remove(role)?.forEach { s.sendAudio(it) } }
+                main.launch { if (sessions[role] === s) { retries[role] = 0; refreshReady() } }
+            }
             override fun onContent(s: LiveSession, content: JSONObject) { main.launch { if (sessions[role] === s) onContent(role, content) } }
             override fun onGoAway(s: LiveSession) { main.launch { if (sessions[role] === s) reopen(role) } }
             override fun onClosed(s: LiveSession, code: Int, reason: String) {
@@ -187,36 +276,35 @@ class Engine(private val ctx: Context, private val repo: Repo) {
                 }
             }
         })
-        synchronized(sessions) { sessions[role] = s }
+        synchronized(lock) { sessions[role] = s }
         s.open()
         refreshReady()
     }
 
     private fun reopen(role: String) {
-        finishTurn(role)
         sessions[role]?.close()
-        synchronized(sessions) { sessions[role] = null }
+        synchronized(lock) { sessions[role] = null }
         val n = (retries[role] ?: 0) + 1
         retries[role] = n
         refreshReady()
-        main.launch { delay(minOf(4000L, 400L shl n)); if (_ui.value.on) openSession(role) }
+        main.launch { delay(minOf(3000L, 300L shl n)); if (_ui.value.on) openSession(role) }
     }
 
     private fun refreshReady() {
         val w = worker
         val need = if (w?.lang == "auto") listOf("ko") else listOf("ko", "w")
         val ready = _ui.value.on && need.all { sessions[it]?.ready == true }
-        _ui.update { it.copy(ready = ready, detecting = w?.lang == "auto", capShown = ready || it.capShown) }
+        _ui.update { it.copy(ready = ready, detecting = w?.lang == "auto") }
     }
 
     private fun onContent(role: String, c: JSONObject) {
         val t = turns.getOrPut(role) { Turn() }!!
-        c.optJSONObject("inputTranscription")?.let { it.optString("text").takeIf { s -> s.isNotEmpty() }?.let { s -> t.inp.append(s) }; it.optString("languageCode").takeIf { s -> s.isNotEmpty() }?.let { s -> t.lang = s } }
+        c.optJSONObject("inputTranscription")?.let { o ->
+            o.optString("text").takeIf { it.isNotEmpty() }?.let { t.inp.append(it) }
+            o.optString("languageCode").takeIf { it.isNotEmpty() }?.let { t.lang = it }
+        }
         c.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { t.out.append(it) }
-
-        // 두 세션이 같은 말을 들으므로, 말한 사람 방향의 세션 자막만 보여준다
-        val ownerSpoke = Langs.norm(t.lang) == "ko"
-        if (t.lang.isEmpty() || (ownerSpoke && role == "w") || (!ownerSpoke && role == "ko")) showCap(t)
+        showCap(role, t)
 
         val accurateOwner = role == "w" && settings.accurate
         if (!accurateOwner) {
@@ -228,31 +316,39 @@ class Engine(private val ctx: Context, private val repo: Repo) {
                 }
             }
         }
+        // 아직 녹음 중이면 기다리고, 끝났으면 서버의 '끝' 신호나 잠깐의 정적 후 기록한다
         idle[role]?.cancel()
-        if (c.optBoolean("turnComplete") || c.optBoolean("generationComplete")) finishTurn(role)
-        else idle[role] = main.launch { delay(1800); finishTurn(role) }
+        val stillTalking = recRole == role
+        if (!stillTalking && (c.optBoolean("turnComplete") || c.optBoolean("generationComplete"))) finishTurn(role)
+        else if (!stillTalking) idle[role] = main.launch { delay(1500); finishTurn(role) }
     }
 
-    private fun showCap(t: Turn) {
-        val owner = Langs.norm(t.lang) == "ko"
+    private fun showCap(role: String, t: Turn) {
+        val owner = role == "w"
         _ui.update {
             it.copy(capShown = true, capOwner = owner, capWho = if (owner) "대표" else (worker?.name ?: "직원"),
-                capText = t.inp.toString().trim().ifEmpty { "…" }, capSub = t.out.toString().trim().let { s -> if (s.isEmpty()) "" else "→ $s" })
+                capText = t.inp.toString().trim().ifEmpty { "듣는 중…" },
+                capSub = t.out.toString().trim().let { s -> if (s.isEmpty()) "" else "→ $s" })
         }
     }
 
     private fun finishTurn(role: String) {
         idle[role]?.cancel(); idle[role] = null
-        val t = turns[role] ?: return
+        if (recRole == role) return
+        val t = turns[role]
         turns[role] = null
+        val talker = if (role == "w") Talker.OWNER else Talker.STAFF
+        if (_ui.value.translating == talker) _ui.update { it.copy(translating = Talker.NONE) }
+        t ?: return
         val w = worker ?: return
         val inp = t.inp.toString().trim()
         val out = t.out.toString().trim()
 
-        if (role == "w" && settings.accurate && inp.isNotEmpty() && Langs.norm(t.lang.ifEmpty { "ko" }) == "ko" && w.lang != "auto") {
-            accurateTurn(inp, w); return
+        if (role == "w" && settings.accurate && inp.isNotEmpty() && w.lang != "auto") { accurateTurn(inp, w); return }
+        if (out.isEmpty()) {
+            if (inp.isNotEmpty()) note("통역 결과가 비어 있습니다. 한 번 더 말씀해 주세요.")
+            return
         }
-        if (out.isEmpty()) return
         if (w.lang == "auto" && role == "ko") {
             val code = Langs.norm(t.lang)
             if (code.isNotEmpty() && code != "ko") setDetected(code)
@@ -267,13 +363,17 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         val l = Langs.get(code)
         val w = worker ?: return
         repo.upsertWorker(w.copy(lang = l.code, name = "새 상대 (${l.name})"))
-        note("${l.name}(${l.native})로 들립니다. 이제 대표님 말도 ${l.name}로 통역합니다. 언어가 다르면 맨 앞 귀표를 길게 눌러 고치세요.")
+        note("${l.name}(${l.native})로 들립니다. 이제 대표님 버튼도 쓸 수 있습니다. 언어가 다르면 맨 앞 귀표를 길게 눌러 고치세요.")
         if (_ui.value.on) openSession("w")
         refreshReady()
     }
 
+    /** 정확 모드·역번역은 충전된 계정이면 빠른 유료 모델을 우선 쓴다 */
+    private fun fastModel(): String =
+        if (settings.orModel == "auto") OpenRouter.paidModels.firstOrNull()?.id ?: "auto" else settings.orModel
+
     private fun backTranslate(wid: String, m: Msg) = main.launch {
-        val back = runCatching { OpenRouter.chat(settings.orKey, settings.orModel, Prompts.back(m.tr, Langs.get(m.lang).en)) }.getOrNull()
+        val back = runCatching { OpenRouter.chat(settings.orKey, fastModel(), Prompts.back(m.tr, Langs.get(m.lang).en)) }.getOrNull()
         if (!back.isNullOrBlank()) repo.updateMsg(wid, m.id) { it.copy(back = back.trim().trim('"', '“', '”')) }
     }
 
@@ -283,9 +383,9 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         if (settings.orKey.isBlank()) { note("정확 모드는 OpenRouter 키가 있어야 합니다. 설정에서 넣어 주세요."); return@launch }
         val m = Msg(repo.nextId(), true, text, "", w.lang, voice = true, accurate = true, pending = true)
         repo.addMsg(w.id, m)
-        _ui.update { it.copy(capShown = true, capOwner = true, capWho = "대표", capText = text, capSub = "정확 통역 중…") }
+        _ui.update { it.copy(capShown = true, capOwner = true, capWho = "대표", capText = text, capSub = "정확 통역 중…", translating = Talker.OWNER) }
         try {
-            val r = Prompts.parseJson(OpenRouter.chat(settings.orKey, settings.orModel, Prompts.translate(text, w, repo.terms.value, "ko")))
+            val r = Prompts.parseJson(OpenRouter.chat(settings.orKey, fastModel(), Prompts.translate(text, w, repo.terms.value, "ko")))
                 ?: throw ApiException("번역 결과를 읽지 못했습니다. 다시 말씀해 주세요.")
             val tr = r.optString("translation"); if (tr.isBlank()) throw ApiException("번역 결과가 비어 있습니다.")
             val terms = r.optJSONArray("terms")?.let { a -> (0 until minOf(6, a.length())).map { a.getString(it) } }.orEmpty()
@@ -295,6 +395,8 @@ class Engine(private val ctx: Context, private val repo: Repo) {
             if (!ok) note("이 언어는 음성으로 읽을 수 없어 화면 글자로만 보여 줍니다. 직원에게 화면을 보여 주세요.")
         } catch (e: Exception) {
             repo.updateMsg(w.id, m.id) { it.copy(pending = false, error = e.message ?: "정확 통역 실패") }
+        } finally {
+            _ui.update { it.copy(translating = Talker.NONE) }
         }
     }
 
@@ -307,7 +409,7 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         val m = Msg(repo.nextId(), true, text, "", w.lang, pending = true)
         repo.addMsg(w.id, m)
         try {
-            val r = Prompts.parseJson(OpenRouter.chat(settings.orKey, settings.orModel, Prompts.translate(text, w, repo.terms.value, null)))
+            val r = Prompts.parseJson(OpenRouter.chat(settings.orKey, fastModel(), Prompts.translate(text, w, repo.terms.value, null)))
                 ?: throw ApiException("번역 결과를 읽지 못했습니다. 다시 해 주세요.")
             val owner = r.optString("source", "ko") == "ko"
             val tr = r.optString("translation"); if (tr.isBlank()) throw ApiException("번역 결과가 비어 있습니다.")
@@ -321,13 +423,11 @@ class Engine(private val ctx: Context, private val repo: Repo) {
 
     /* ---------------- 소리 내어 읽기 ---------------- */
 
-    /** 대화 기록의 '읽어주기' 버튼 */
     fun readAloud(m: Msg) = main.launch {
         if (_playingId.value == m.id) return@launch
         speak(m.tr, if (m.fromOwner) m.lang else "ko", m.id, live = _ui.value.on)
     }
 
-    /** Gemini 음성 → 안 되면 휴대폰 음성. 재생 중인 기록 id를 표시했다가 끝나면 지운다 */
     private suspend fun speak(text: String, lang: String, msgId: Long, live: Boolean): Boolean {
         _playingId.value = msgId
         val pcm = if (settings.geminiKey.isNotBlank()) runCatching { GeminiTts.synth(settings.geminiKey, text) }.getOrNull() else null
@@ -371,7 +471,7 @@ class Engine(private val ctx: Context, private val repo: Repo) {
         val w = worker
         val micOk = SystemClock.elapsedRealtime() - lastChunkAt < 1500
         fun st(r: String) = when { sessions[r]?.ready == true -> "✓"; sessions.containsKey(r) -> "…"; else -> "—" }
-        val parts = mutableListOf("마이크 " + if (!micOk) "✕ 멈춤" else if (lastLevel > 0.004f) "● 소리 들어옴" else "○ 조용함")
+        val parts = mutableListOf("마이크 " + if (!micOk) "✕ 멈춤" else if (recRole == null) "대기" else if (lastLevel > 0.004f) "● 소리 들어옴" else "○ 조용함")
         parts += "한국어 ${st("ko")}"
         if (w != null && w.lang != "auto") parts += "${Langs.get(w.lang).name} ${st("w")}"
         if (_ui.value.route.isNotEmpty()) parts += _ui.value.route
