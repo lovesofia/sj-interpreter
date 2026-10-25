@@ -125,6 +125,8 @@ object OpenRouter {
     private val PAID_PREF = listOf("^google/gemini-[\\d.]+-flash(?!.*(image|tts|audio))", "^openai/gpt-[\\w.-]*mini(?!.*(audio|search))",
         "^anthropic/claude-haiku").map { Regex(it) }
     private val FALLBACK_FREE = listOf("google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free", "openrouter/free")
+    /** 빠르고 정확한 유료 모델 (충전 계정용). 앞 모델이 막히면 다음으로 */
+    val FAST = listOf("google/gemini-3.8-flash", "google/gemini-3.7-flash", "google/gemini-3.5-flash")
 
     data class PaidModel(val id: String, val wonPer100: Long)
 
@@ -159,8 +161,11 @@ object OpenRouter {
         }
     }
 
-    fun chain(setting: String): List<String> =
-        if (setting != "auto") listOf(setting) else freeModels.ifEmpty { FALLBACK_FREE }.take(3)
+    fun chain(setting: String): List<String> = when (setting) {
+        "fast" -> FAST
+        "auto" -> freeModels.ifEmpty { FALLBACK_FREE }.take(3)
+        else -> listOf(setting)
+    }
 
     suspend fun chat(key: String, model: String, prompt: String): String = withContext(Dispatchers.IO) {
         if (key.isBlank()) throw ApiException("OpenRouter 키가 없습니다. 설정에서 넣어 주세요.")
@@ -168,6 +173,7 @@ object OpenRouter {
             .put("models", JSONArray(chain(model)))
             .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
             .put("max_tokens", 1200).put("temperature", 0.2)
+            .put("provider", JSONObject().put("sort", "latency"))   // 가장 빨리 답하는 서버로
         val req = Request.Builder().url("$BASE/chat/completions")
             .header("Authorization", "Bearer $key")
             .header("HTTP-Referer", "https://github.com/lovesofia/sj-interpreter")

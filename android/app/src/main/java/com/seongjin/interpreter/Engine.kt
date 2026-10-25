@@ -369,8 +369,7 @@ class Engine(private val ctx: Context, private val repo: Repo) {
     }
 
     /** 정확 모드·역번역은 충전된 계정이면 빠른 유료 모델을 우선 쓴다 */
-    private fun fastModel(): String =
-        if (settings.orModel == "auto") OpenRouter.paidModels.firstOrNull()?.id ?: "auto" else settings.orModel
+    private fun fastModel(): String = settings.orModel
 
     private fun backTranslate(wid: String, m: Msg) = main.launch {
         val back = runCatching { OpenRouter.chat(settings.orKey, fastModel(), Prompts.back(m.tr, Langs.get(m.lang).en)) }.getOrNull()

@@ -80,7 +80,7 @@ data class Term(val ko: String, val ne: String, val uz: String, val ru: String, 
 data class AppSettings(
     val geminiKey: String = "",
     val orKey: String = "",
-    val orModel: String = "auto",
+    val orModel: String = "fast",
     val accurate: Boolean = false,
     val autoSpeak: Boolean = true,
 )
@@ -212,7 +212,7 @@ class Repo(ctx: Context) {
         val raw = p.getString("settings", null) ?: return AppSettings()
         return runCatching {
             val o = JSONObject(raw)
-            AppSettings(o.optString("geminiKey"), o.optString("orKey"), o.optString("orModel", "auto"), o.optBoolean("accurate"), o.optBoolean("autoSpeak", true))
+            AppSettings(o.optString("geminiKey"), o.optString("orKey"), o.optString("orModel", "fast").let { if (it == "auto") "fast" else it }, o.optBoolean("accurate"), o.optBoolean("autoSpeak", true))
         }.getOrDefault(AppSettings())
     }
 

@@ -666,14 +666,15 @@ fun SettingsDialog(s: AppSettings, onSave: (AppSettings) -> Unit, onClose: () ->
                     OutlinedTextField(ok, { ok = it.trim() }, Modifier.fillMaxWidth(), placeholder = { Text("sk-or-v1-…") }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation())
                 }
-                Field("글 통역 모델", if (OpenRouter.freeModels.isEmpty()) "무료 모델 목록을 받지 못해 기본 목록을 씁니다." else
-                    "자동은 ${OpenRouter.chain("auto").joinToString(" → ") { it.substringAfter('/').removeSuffix(":free") }} 순서로 시도합니다.") {
+                Field("번역 모델 · 정확 모드·역번역·글 통역", if (model == "fast") "Gemini 3.8 Flash → 3.7 → 3.5 순서. 가장 빨리 답하는 서버로 보냅니다. 충전금에서 차감." else
+                    "무료 모델은 느리거나 줄을 설 수 있습니다.") {
                     Box {
                         OutlinedButton(onClick = { openModel = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (model == "auto") "자동 · 무료 모델 추천순" else model, color = p.ink)
+                            Text(when (model) { "fast" -> "빠름·정확 · Gemini 3.8 Flash (추천)"; "auto" -> "무료 모델 자동"; else -> model }, color = p.ink)
                         }
                         DropdownMenu(expanded = openModel, onDismissRequest = { openModel = false }) {
-                            DropdownMenuItem(text = { Text("자동 · 무료 모델 추천순") }, onClick = { model = "auto"; openModel = false })
+                            DropdownMenuItem(text = { Text("빠름·정확 · Gemini 3.8 Flash (추천)") }, onClick = { model = "fast"; openModel = false })
+                            DropdownMenuItem(text = { Text("무료 모델 자동 (느릴 수 있음)") }, onClick = { model = "auto"; openModel = false })
                             OpenRouter.freeModels.forEach { id -> DropdownMenuItem(text = { Text("무료 · " + id.removeSuffix(":free")) }, onClick = { model = id; openModel = false }) }
                             OpenRouter.paidModels.forEach { m -> DropdownMenuItem(text = { Text("유료 · ${m.id} · 100문장 약 ${m.wonPer100}원") }, onClick = { model = m.id; openModel = false }) }
                         }
