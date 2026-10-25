@@ -1,0 +1,57 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build APK
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle -p android assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # 결과(APK 또는 오류 기록)를 'builds' 가지에 올려서 바로 받아볼 수 있게 한다
+      - name: Publish result to builds branch
+        if: always()
+        run: |
+          mkdir -p /tmp/out
+          cp build.log /tmp/out/build.log || true
+          if cp android/app/build/outputs/apk/debug/app-debug.apk /tmp/out/sj-interpreter.apk 2>/dev/null; then
+            echo "success" > /tmp/out/status.txt
+          else
+            echo "failed" > /tmp/out/status.txt
+            grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -150 > /tmp/out/errors.txt || true
+          fi
+          echo "${GITHUB_SHA}" >> /tmp/out/status.txt
+          echo "run ${GITHUB_RUN_NUMBER}" >> /tmp/out/status.txt
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan builds-tmp
+          git rm -rf --quiet . || true
+          git clean -fdxq
+          cp /tmp/out/* .
+          git add -A
+          git commit -q -m "build ${GITHUB_RUN_NUMBER} ${GITHUB_SHA}"
+          git push -f origin HEAD:builds
